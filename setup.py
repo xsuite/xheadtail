@@ -16,8 +16,8 @@ __version__ = dd["__version__"]
 setup(
     name="xheadtail",
     version=__version__,
-    description="In-memory serialization and code generator for CPU and GPU",
-    long_description="In-memory serialization and code generator for CPU and GPU",
+    description="Collective effects for particle accelerators",
+    long_description="Collective effects for particle accelerators",
     author="Lotta Mether",
     author_email="lotta.mether@cern.ch",
     url="https://xsuite.readthedocs.io/",
