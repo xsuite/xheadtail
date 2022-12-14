@@ -1,6 +1,7 @@
 import numpy as np
 import xheadtail as xht
 import xpart as xp
+import xobjects as xo
 
 
 def test_damper_resistive():
