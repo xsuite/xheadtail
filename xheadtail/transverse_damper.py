@@ -30,6 +30,8 @@ class TransverseDamper(xt.BeamElement):
         'beta_y': xo.Float64,
     }
 
+    _store_in_to_dict = ['phi_x', 'phi_y']
+
     iscollective = True
 
     def __init__(self, damping_time_x=None, damping_time_y=None,
@@ -37,15 +39,28 @@ class TransverseDamper(xt.BeamElement):
 
         xt.BeamElement.__init__(self, **kwargs)
 
+        if '_xobject' in kwargs:
+            return
+
         if damping_time_x:
             assert gain_x is None, (
                 'Only one of `damping_time_x` and `gain_x` can be passed.')
             self.damping_time_x = damping_time_x
+        else:
+            if gain_x is not None:
+                self.gain_x = gain_x
+            else:
+                self.gain_x = 0
 
         if damping_time_y:
             assert gain_y is None, (
                 'Only one of `damping_time_y` and `gain_y` can be passed.')
             self.damping_time_y = damping_time_y
+        else:
+            if gain_y is not None:
+                self.gain_y = gain_y
+            else:
+                self.gain_y = 0
 
         self.phi_x = phi_x
         self.phi_y = phi_y
