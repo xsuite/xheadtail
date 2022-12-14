@@ -8,6 +8,10 @@ def test_damper_resistive():
     damper_y = xht.TransverseDamper(damping_time_y=50)
     damper_xy = xht.TransverseDamper(damping_time_x=10, damping_time_y=50)
 
+    assert damper_x.iscollective
+    assert damper_y.iscollective
+    assert damper_xy.iscollective
+
     particles0 = xp.Particles(p0c=450e9, px=[1,2,3], py=[3,4,5], x=10, y=20)
     particles1 = particles0.copy()
     particles2 = particles1.copy()
@@ -106,6 +110,20 @@ def test_damper_todict():
                                      beta_x=20, beta_y=30, phi_x=30, phi_y=120)
 
     damper = xht.TransverseDamper.from_dict(damper_xy.to_dict())
+    assert damper.iscollective
+    assert damper.damping_time_x == damper_xy.damping_time_x
+    assert damper.damping_time_y == damper_xy.damping_time_y
+    assert np.isclose(damper.phi_x, damper_xy.phi_x, rtol=0, atol=1e-13)
+    assert np.isclose(damper.phi_y, damper_xy.phi_y, rtol=0, atol=1e-13)
+    assert damper.beta_x == damper_xy.beta_x
+    assert damper.beta_y == damper_xy.beta_y
+
+def test_damper_copy():
+    damper_xy = xht.TransverseDamper(damping_time_x=10, damping_time_y=50,
+                                     beta_x=20, beta_y=30, phi_x=30, phi_y=120)
+
+    damper = damper_xy.copy()
+    assert damper.iscollective
     assert damper.damping_time_x == damper_xy.damping_time_x
     assert damper.damping_time_y == damper_xy.damping_time_y
     assert np.isclose(damper.phi_x, damper_xy.phi_x, rtol=0, atol=1e-13)
