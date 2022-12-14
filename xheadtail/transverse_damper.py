@@ -2,93 +2,132 @@ import numpy as np
 from scipy.special import k0
 from scipy.constants import c, e
 
-import xpart as xp
 import xobjects as xo
+import xpart as xp
+import xtrack as xt
 
-def _compute_mean(particles, coord):
-    if isinstance(particles._context, xo.ContextPyopencl):
-        raise NotImplementedError
-    mask = particles.state > 0
-    res = getattr(particles, coord)[mask].mean()
-    return res
 
-class TransverseDamper:
-
-    def __init__(self, dampingrate_x, dampingrate_y, phase=90,
-                 local_beta_function=None, *args, **kwargs):
-        '''Ideal transverse damper with an in-place "measurement"
-        (transverse "pick-up") of the transverse dipole moment.
-        Note: a single bunch in the beam is assumed, i.e. this works on
-        the entire beam's moments.
-
-        Arguments:
-            - dampingrate_x, dampingrate_y: horizontal and vertical
-                damping rates in turns (e.g. 50 turns for a typical 2018
-                LHC ADT set-up)
-            - phase: phase of the damper kick in degrees with respect to
-                the transverse position "pick-up". The default value of
-                90 degrees corresponds to a typical resistive damper.
-            - local_beta_function: the optics beta function at the
-                transverse position "pick-up" (e.g. in the local place
-                of this Element). This is required if the damper is not
-                a purely resistive damper (or exciter), i.e. if the
-                phase is not 90 (or 270) degrees. The beta function is
-                assumed to be the same for both transverse planes,
-                otherwise use two instances of the TransverseDamper.
-        '''
-
-        if dampingrate_x and not dampingrate_y:
-            self.gain_x = 2/dampingrate_x
-            self.track = self.track_horizontal
-            self.prints('Damper in horizontal plane active')
-        elif not dampingrate_x and dampingrate_y:
-            self.gain_y = 2/dampingrate_y
-            self.track = self.track_vertical
-            self.prints('Damper in vertical plane active')
-        elif not dampingrate_x and not dampingrate_y:
-            self.prints('Dampers not active')
+def with_hidden_lost_particles(track):
+    def track_without_lost_particles(self, particles):
+        if particles.lost_particles_are_hidden:
+            track(self, particles)
         else:
-            self.gain_x = 2/dampingrate_x
-            self.gain_y = 2/dampingrate_y
-            self.track = self.track_all
-            self.prints('Dampers active')
-        if phase != 90 and phase != 270 and not local_beta_function:
-            raise TypeError(
-                'TransverseDamper: numeric local_beta_function value at '
-                'position of damper missing! (Required because of non-zero '
-                'reactive damper component.)')
-        self.phase_in_2pi = phase / 360. * 2*np.pi
-        self.local_beta_function = local_beta_function
+            particles.hide_lost_particles()
+            track(self, particles)
+            particles.unhide_lost_particles()
+    return track_without_lost_particles
 
-    # will be overwritten at initialisation
-    def track(self, particles: xp.Particles):
-        pass
+class TransverseDamper(xt.BeamElement):
 
-    def track_horizontal(self, particles: xp.Particles):
-        particles.px -= self.gain_x * np.sin(self.phase_in_2pi) * _compute_mean(particles, 'px')
-        if self.local_beta_function:
-            particles.px -= (self.gain_x * np.cos(self.phase_in_2pi) *
-                        _compute_mean(particles, 'x') / self.local_beta_function)
+    _xofields = {
+        'gain_x': xo.Float64,
+        'gain_y': xo.Float64,
+        '_sin_phi_x': xo.Float64,
+        '_sin_phi_y': xo.Float64,
+        '_cos_phi_x': xo.Float64,
+        '_cos_phi_y': xo.Float64,
+        'beta_x': xo.Float64,
+        'beta_y': xo.Float64,
+    }
 
-    def track_vertical(self, particles: xp.Particles):
-        particles.py -= self.gain_y * np.sin(self.phase_in_2pi) * _compute_mean(particles, 'py')
-        if self.local_beta_function:
-            particles.py -= (self.gain_y * np.cos(self.phase_in_2pi) *
-                        _compute_mean(particles, 'y') / self.local_beta_function)
+    iscollective = True
 
-    def track_all(self, particles: xp.Particles):
-        particles.px -= self.gain_x * np.sin(self.phase_in_2pi) * _compute_mean(particles, 'px')
-        particles.py -= self.gain_y * np.sin(self.phase_in_2pi) * _compute_mean(particles, 'py')
-        if self.local_beta_function:
-            particles.px -= (self.gain_x * np.cos(self.phase_in_2pi) *
-                        _compute_mean(particles, 'x') / self.local_beta_function)
-            particles.py -= (self.gain_y * np.cos(self.phase_in_2pi) *
-                        _compute_mean(particles, 'y') / self.local_beta_function)
+    def __init__(self, damping_time_x=None, damping_time_y=None,
+                 gain_x=None, gain_y=None, phi_x=90., phi_y=90., **kwargs):
 
-    @classmethod
-    def horizontal(cls, dampingrate_x, *args, **kwargs):
-        return cls(dampingrate_x, 0, *args, **kwargs)
+        xt.BeamElement.__init__(self, **kwargs)
 
-    @classmethod
-    def vertical(cls, dampingrate_y, *args, **kwargs):
-        return cls(0, dampingrate_y, *args, **kwargs)
+        if damping_time_x:
+            assert gain_x is None, (
+                'Only one of `damping_time_x` and `gain_x` can be passed.')
+            self.damping_time_x = damping_time_x
+
+        if damping_time_y:
+            assert gain_y is None, (
+                'Only one of `damping_time_y` and `gain_y` can be passed.')
+            self.damping_time_y = damping_time_y
+
+        self.phi_x = phi_x
+        self.phi_y = phi_y
+
+    @with_hidden_lost_particles
+    def track(self, particles):
+        if self.gain_x != 0:
+            particles.px -= (self.gain_x * self._sin_phi_x
+                             * particles.px.mean())
+            if self.beta_x != 0:
+                particles.px -= (self.gain_x * self._cos_phi_x
+                                 * particles.x.mean() / self.beta_x)
+        if self.gain_y != 0:
+            particles.py -= (self.gain_y * self._sin_phi_y
+                             * particles.py.mean())
+            if self.beta_y != 0:
+                particles.py -= (self.gain_y * self._cos_phi_y
+                                 * particles.y.mean() / self.beta_y)
+    @property
+    def damping_time_x(self):
+        if self.gain_x == 0:
+            return None
+        return 2/self.gain_x
+
+    @damping_time_x.setter
+    def damping_time_x(self, value):
+        if value is None:
+            self.gain_x = 0
+        elif value == 0:
+            raise ValueError('Only non-zero values allowed for `damping_time_x`.')
+        else:
+            self.gain_x = 2/value
+
+    @property
+    def damping_time_y(self):
+        if self.gain_y == 0:
+            return None
+        return 2/self.gain_y
+
+    @damping_time_y.setter
+    def damping_time_y(self, value):
+        if value is None:
+            self.gain_y = 0
+        elif value == 0:
+            raise ValueError('Only non-zero values allowed for `damping_time_y`.')
+        else:
+            self.gain_y = 2/value
+
+    @property
+    def phi_x(self):
+        return np.arctan2(self._sin_phi_x, self._cos_phi_x) * 180 / np.pi
+
+    @phi_x.setter
+    def phi_x(self, value):
+        self._sin_phi_x = np.sin(value / 180 * np.pi)
+        self._cos_phi_x = np.cos(value / 180 * np.pi)
+
+    @property
+    def phi_y(self):
+        return np.arctan2(self._sin_phi_y, self._cos_phi_y) * 180 / np.pi
+
+    @phi_y.setter
+    def phi_y(self, value):
+        self._sin_phi_y = np.sin(value / 180 * np.pi)
+        self._cos_phi_y = np.cos(value / 180 * np.pi)
+
+    @property
+    def dampingrate_x(self):
+        raise NameError(
+            '`dampingrate_x` is deprecated. Please use damping_time_x instead.')
+
+    @dampingrate_x.setter
+    def dampingrate_x(self, value):
+        raise NameError(
+            '`dampingrate_x` is deprecated. Please use damping_time_x instead.')
+
+    @property
+    def dampingrate_y(self):
+        raise NameError(
+            '`dampingrate_y` is deprecated. Please use damping_time_y instead.')
+
+    @dampingrate_y.setter
+    def dampingrate_y(self, value):
+        raise NameError(
+            '`dampingrate_y` is deprecated. Please use damping_time_y instead.')
