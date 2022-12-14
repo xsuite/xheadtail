@@ -9,6 +9,9 @@ def test_damper_resistive():
     for context in xo.context.get_test_contexts():
         print(f'Running test with context {context}')
 
+        if isinstance(context, xo.ContextPyopencl):
+            continue # Not yet supported
+
         damper_x = xht.TransverseDamper(damping_time_x=10, _context=context)
         damper_y = xht.TransverseDamper(damping_time_y=50, _context=context)
         damper_xy = xht.TransverseDamper(damping_time_x=10, damping_time_y=50,
