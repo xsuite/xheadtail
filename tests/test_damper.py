@@ -112,3 +112,16 @@ def test_damper_todict():
     assert np.isclose(damper.phi_y, damper_xy.phi_y, rtol=0, atol=1e-13)
     assert damper.beta_x == damper_xy.beta_x
     assert damper.beta_y == damper_xy.beta_y
+
+
+def test_damper_copy():
+    damper_xy = xht.TransverseDamper(damping_time_x=10, damping_time_y=50,
+                                     beta_x=20, beta_y=30, phi_x=30, phi_y=120)
+
+    damper = damper_xy.copy()
+    assert damper.damping_time_x == damper_xy.damping_time_x
+    assert damper.damping_time_y == damper_xy.damping_time_y
+    assert np.isclose(damper.phi_x, damper_xy.phi_x, rtol=0, atol=1e-13)
+    assert np.isclose(damper.phi_y, damper_xy.phi_y, rtol=0, atol=1e-13)
+    assert damper.beta_x == damper_xy.beta_x
+    assert damper.beta_y == damper_xy.beta_y
