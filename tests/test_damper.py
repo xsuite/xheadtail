@@ -2,65 +2,68 @@ import numpy as np
 import xheadtail as xht
 import xpart as xp
 import xobjects as xo
+from xobjects.test_helpers import for_all_test_contexts
 
+@for_all_test_contexts
+def test_damper_resistive(test_context):
 
-def test_damper_resistive():
+    damper_x = xht.TransverseDamper(damping_time_x=10, _context=test_context)
+    damper_y = xht.TransverseDamper(damping_time_y=50, _context=test_context)
+    damper_xy = xht.TransverseDamper(damping_time_x=10, damping_time_y=50,
+                                    _context=test_context)
 
-    for context in xo.context.get_test_contexts():
-        print(f'Running test with context {context}')
+    assert damper_x.iscollective
+    assert damper_y.iscollective
+    assert damper_xy.iscollective
 
-        if isinstance(context, xo.ContextPyopencl):
-            continue # Not yet supported
+    particles0 = xp.Particles(p0c=450e9, px=[1,2,3], py=[3,4,5], x=10, y=20,
+                            _context=test_context)
+    particles1 = particles0.copy()
+    particles2 = particles1.copy()
+    particles3 = particles1.copy()
 
-        damper_x = xht.TransverseDamper(damping_time_x=10, _context=context)
-        damper_y = xht.TransverseDamper(damping_time_y=50, _context=context)
-        damper_xy = xht.TransverseDamper(damping_time_x=10, damping_time_y=50,
-                                        _context=context)
+    damper_x.track(particles1)
+    damper_y.track(particles2)
+    damper_xy.track(particles3)
 
-        assert damper_x.iscollective
-        assert damper_y.iscollective
-        assert damper_xy.iscollective
+    particles0.move(_context=xo.context_default)
+    particles1.move(_context=xo.context_default)
+    particles2.move(_context=xo.context_default)
+    particles3.move(_context=xo.context_default)
 
-        particles0 = xp.Particles(p0c=450e9, px=[1,2,3], py=[3,4,5], x=10, y=20,
-                                _context=context)
-        particles1 = particles0.copy()
-        particles2 = particles1.copy()
-        particles3 = particles1.copy()
+    assert np.isclose(damper_x.gain_x, 2/10, rtol=0, atol=1e-14)
+    assert np.isclose(damper_y.gain_y, 2/50, rtol=0, atol=1e-14)
+    assert damper_xy.gain_x == damper_x.gain_x
+    assert damper_xy.gain_y == damper_y.gain_y
 
-        damper_x.track(particles1)
-        damper_y.track(particles2)
-        damper_xy.track(particles3)
+    assert np.isclose(damper_x.damping_time_x, 10, rtol=0, atol=1e-14)
+    assert np.isclose(damper_y.damping_time_y, 50, rtol=0, atol=1e-14)
 
-        assert np.isclose(damper_x.gain_x, 2/10, rtol=0, atol=1e-14)
-        assert np.isclose(damper_y.gain_y, 2/50, rtol=0, atol=1e-14)
-        assert damper_xy.gain_x == damper_x.gain_x
-        assert damper_xy.gain_y == damper_y.gain_y
+    assert np.all(particles1.py == particles0.py)
+    assert np.allclose(particles1.px, particles0.px - damper_x.gain_x*particles0.px.mean(), rtol=0, atol=1e-14)
 
-        assert np.isclose(damper_x.damping_time_x, 10, rtol=0, atol=1e-14)
-        assert np.isclose(damper_y.damping_time_y, 50, rtol=0, atol=1e-14)
+    assert np.all(particles2.px == particles0.px)
+    assert np.allclose(particles2.py, particles0.py - damper_y.gain_y*particles0.py.mean(), rtol=0, atol=1e-14)
 
-        assert np.all(particles1.py == particles0.py)
-        assert np.allclose(particles1.px, particles0.px - damper_x.gain_x*particles0.px.mean(), rtol=0, atol=1e-14)
+    assert np.all(particles3.px == particles1.px)
+    assert np.all(particles3.py == particles2.py)
 
-        assert np.all(particles2.px == particles0.px)
-        assert np.allclose(particles2.py, particles0.py - damper_y.gain_y*particles0.py.mean(), rtol=0, atol=1e-14)
+    particles0.move(_context=test_context)
+    particles4 = xp.Particles.merge([particles0, particles0])
+    particles4.px[3:] = 1000
+    particles4.py[3:] = 2000
+    particles4.state[3:] = 0
 
-        assert np.all(particles3.px == particles1.px)
-        assert np.all(particles3.py == particles2.py)
+    for damper, particles in zip([damper_x, damper_y, damper_xy],
+                    [particles1, particles2, particles3]):
+        pp = particles4.copy()
+        damper.track(pp)
+        pp.move(_context=xo.context_default)
 
-        particles4 = xp.Particles.merge([particles0, particles0])
-        particles4.px[3:] = 1000
-        particles4.py[3:] = 2000
-        particles4.state[3:] = 0
-
-        for damper, particles in zip([damper_x, damper_y, damper_xy],
-                        [particles1, particles2, particles3]):
-            pp = particles4.copy()
-            damper.track(pp)
-            assert np.all(pp.px[:3] == particles.px)
-            assert np.all(pp.py[:3] == particles.py)
-            assert np.all(pp.px[3:] == 1000)
-            assert np.all(pp.py[3:] == 2000)
+        assert np.all(pp.px[:3] == particles.px)
+        assert np.all(pp.py[:3] == particles.py)
+        assert np.all(pp.px[3:] == 1000)
+        assert np.all(pp.py[3:] == 2000)
 
 
 def test_damper_reactive():
